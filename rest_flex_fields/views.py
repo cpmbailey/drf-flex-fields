@@ -1,67 +1,55 @@
 """ 
-	This class helps provide control over which fields can be expanded when a 
-	collection is requested via the list method.
+This class determines how to optimize ViewSet queries when expanding fields.
 """
-
-from fnmatch import fnmatch
+from django.db.models import ForeignKey, ManyToManyField, ManyToOneRel, OneToOneRel
+from django.core.exceptions import FieldDoesNotExist
 from rest_framework import viewsets
+from .serializers import import_serializer_class
 from .utils import split_list
 
 
-class FlexFieldsMixin(object):
-	permit_list_expands = []
-	_expandable = True
-	_force_expand = []
-	    
-	def list(self, request, *args, **kwargs):
-		"""
-			Prevent expansion by default; add fields to "permit_list_expands"
-			to whitelist particular fields.
-		"""
-		self._expandable = False
-		expand = request.query_params.get('expand')
+class FlexFieldsMixin:
+    def expand_field(self, field, queryset, serializer_class=None, query_parts=None):
+        field_parts = field.split('.')
+        serializer_class = serializer_class or self.get_serializer_class()
+        query_parts = query_parts or []
+        django_obj = queryset
 
-		if len(self.permit_list_expands) > 0 and expand:
-			if expand == '*':
-				self._force_expand = self.permit_list_expands
-			else:
-				self._force_expand = [field for field in split_list(expand) if any(fnmatch(field, permit_field) for permit_field in self.permit_list_expands)]
+        for idx, field in enumerate(field_parts):
+            if field == '*':
+                for f in serializer_class.expandable_fields().keys():
+                    queryset = self.expand_field(f, queryset, serializer_class, query_parts)
 
-		return super(FlexFieldsMixin, self).list(request, *args, **kwargs)
+            if field not in serializer_class.expandable_fields():
+                break
 
-	def create_serializer(self, serializer_class, *args, **kwargs):
-		return serializer_class(*args, **kwargs)
+            source_field = serializer_class()[field].source
+            serializer_class, serializer_settings = serializer_class.expandable_fields()[field]
+            serializer_class = import_serializer_class(serializer_class)
+            serializer_class = import_serializer_class(serializer_settings.get('base_serializer_class', serializer_class))
 
-	def get_serializer(self, *args, **kwargs):
-		serializer_class = self.get_serializer_class()
-		kwargs['context'] = self.get_serializer_context()
-		return self.create_serializer(serializer_class, *args, **kwargs)
+            try:
+                django_obj = django_obj.related_model._meta.get_field(source_field) if idx else django_obj.model._meta.get_field(source_field)
+            except FieldDoesNotExist:
+                break
+            else:
+                query_parts.append(field)
 
-	def get_serializer_context(self):
-		default_context = super(FlexFieldsMixin, self).get_serializer_context()
-		default_context['expandable'] = self._expandable
-		default_context['force_expand'] = self._force_expand
-		return default_context
+        related_field = '__'.join(query_parts)
+        if isinstance(django_obj, (OneToOneRel, ForeignKey)):
+            queryset = queryset.select_related(related_field)
+        elif isinstance(django_obj, (ManyToOneRel, ManyToManyField)):
+            queryset = queryset.prefetch_related(related_field)
+        return queryset
 
-	def get_queryset(self):
-		queryset = super().get_queryset()
-		expand = self.request.query_params.get('expand')
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        expand = self.request.query_params.get('expand', '')
 
-		if not expand:
-			return queryset
+        for field in split_list(expand):
+            queryset = self.expand_field(field, queryset)
 
-		if self._expandable:
-			expand_fields = self.get_serializer_class().expandable_fields.keys() if expand == '*' else split_list(expand)
-		else:
-			expand_fields = self._force_expand
-
-		for field in expand_fields:
-			queryset = self.expand_field(field, queryset)
-
-		return queryset
-
-	def expand_field(self, field, queryset):
-		return queryset
+        return queryset
 
 
 class FlexFieldsModelViewSet(FlexFieldsMixin, viewsets.ModelViewSet):

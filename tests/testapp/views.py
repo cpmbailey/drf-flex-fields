@@ -3,11 +3,6 @@ from tests.testapp.serializers import PetSerializer
 from tests.testapp.models import Pet
 
 
-
 class PetViewSet(FlexFieldsModelViewSet):
-	"""
-    API endpoint for testing purposes.
-    """
-	serializer_class = PetSerializer	
-	queryset = Pet.objects.all()
-	permit_list_expands = ['owner', 'owner.*']
+    serializer_class = PetSerializer
+    queryset = Pet.objects.all()

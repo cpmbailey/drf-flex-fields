@@ -1,143 +1,154 @@
+import pytest
 from django.urls import reverse
-from rest_framework.test import APITestCase
 from tests.testapp.models import Pet, Person, Company
 
+pytestmark = pytest.mark.django_db
 
 
-class PetViewTests(APITestCase):
-    def setUp(self):
-        self.company = Company.objects.create(name='McDonalds')
-
-        self.person = Person.objects.create(
-            name='Fred', 
-            hobbies='sailing', 
-            employer=self.company
+@pytest.fixture(scope='session')
+def django_db_setup(django_db_setup, django_db_blocker):
+    with django_db_blocker.unblock():
+        company = Company.objects.create(name='McDonalds')
+        person = Person.objects.create(
+            name='Fred',
+            hobbies='sailing',
+            employer=company
         )
-
-        self.pet = Pet.objects.create(
-            name='Garfield', 
-            toys='paper ball, string', 
+        pet = Pet.objects.create(
+            name='Garfield',
+            toys='paper ball, string',
             species='cat',
-            owner=self.person
+            owner=person
         )
+        yield
+        pet.delete()
+        person.delete()
+        company.delete()
 
 
-    def tearDown(self):
-        Company.objects.all().delete()
-        Person.objects.all().delete()
-        Pet.objects.all().delete()
+@pytest.fixture
+def pet(db):
+    return Pet.objects.get()
 
 
-    def test_retrieve_expanded(self):
-        url = reverse('pet-detail', args=[self.pet.id])
-        response = self.client.get(url+'?expand=owner',format='json')
+def test_retrieve_expand(client, pet):
+    url = reverse('pet-detail', args=[pet.id])
+    response = client.get(url+'?expand=owner', format='json')
 
-        self.assertEqual(response.data, {
-            'name' : 'Garfield',
-            'toys' : 'paper ball, string',
-            'species' : 'cat',
-            'owner' : {
-                'name' : 'Fred',
-                'hobbies' : 'sailing' 
+    assert response.data == {
+        'name': 'Garfield',
+        'toys': 'paper ball, string',
+        'species': 'cat',
+        'owner': {
+            'name': 'Fred',
+            'hobbies': 'sailing',
+            'employer': 1
+        }
+    }
+
+
+def test_retrieve_sparse(client, pet):
+    url = reverse('pet-detail', args=[pet.id])
+    response = client.get(url+'?fields=name,species', format='json')
+
+    assert response.data == {
+        'name': 'Garfield',
+        'species': 'cat'
+    }
+
+
+def test_retrieve_sparse_whitespace(client, pet):
+    url = reverse('pet-detail', args=[pet.id])
+    response = client.get(url+'?fields=name, species', format='json')
+
+    assert response.data == {
+        'name': 'Garfield',
+        'species': 'cat'
+    }
+
+
+def test_retrieve_omit(client, pet):
+    url = reverse('pet-detail', args=[pet.id])
+    response = client.get(url+'?omit=toys,owner', format='json')
+
+    assert response.data == {
+        'name': 'Garfield',
+        'species': 'cat'
+    }
+
+
+def test_retrieve_sparse_and_deep_expand(client, pet):
+    url = reverse('pet-detail', args=[pet.id])
+    url = url + '?fields=owner.employer&expand=owner.employer'
+    response = client.get(url, format='json')
+
+    assert response.data == {
+        'owner': {
+            'employer': {
+                'public': False,
+                'name': 'McDonalds'
             }
-        })
+        }
+    }
 
 
-    def test_retrieve_sparse(self):
-        url = reverse('pet-detail', args=[self.pet.id])
-        response = self.client.get(url+'?fields=name,species',format='json')
+def test_retrieve_omit_and_deep_expand(client, pet):
+    url = reverse('pet-detail', args=[pet.id])
+    url = url + '?omit=species,toys,owner.employer.public&expand=owner.employer'
+    response = client.get(url, format='json')
 
-        self.assertEqual(response.data, {
-            'name' : 'Garfield',
-            'species' : 'cat'
-        })
-
-
-    def test_retrieve_sparse_whitespace(self):
-        url = reverse('pet-detail', args=[self.pet.id])
-        response = self.client.get(url+'?fields=name, species',format='json')
-
-        self.assertEqual(response.data, {
-            'name' : 'Garfield',
-            'species' : 'cat'
-        })
-
-
-    def test_retrieve_omit(self):
-        url = reverse('pet-detail', args=[self.pet.id])
-        response = self.client.get(url+'?omit=toys,owner',format='json')
-
-        self.assertEqual(response.data, {
-            'name' : 'Garfield',
-            'species' : 'cat'
-        })
-
-
-    def test_retrieve_sparse_and_deep_expanded(self):
-        url = reverse('pet-detail', args=[self.pet.id])
-        url = url+'?fields=owner&expand=owner.employer'
-        response = self.client.get(url, format='json')
-
-        self.assertEqual(response.data, {
-            'owner' : {
-                'name' : 'Fred',
-                'hobbies' : 'sailing',
-                'employer' : {
-                    'public' : False,
-                    'name' : 'McDonalds'
-                }    
+    assert response.data == {
+        'name': 'Garfield',
+        'owner': {
+            'name': 'Fred',
+            'hobbies': 'sailing',
+            'employer': {
+                'name': 'McDonalds'
             }
-        })
+        }
+    }
 
 
-    def test_retrieve_omit_and_deep_expanded(self):
-        url = reverse('pet-detail', args=[self.pet.id])
-        url = url+'?omit=species,toys,owner.employer.public&expand=owner.employer'
-        response = self.client.get(url, format='json')
+@pytest.mark.parametrize('expand', [
+    'owner',
+    '*',
+], ids=('field', 'wildcard'))
+def test_list_expand(expand, client):
+    url = reverse('pet-list')
+    url = url + '?expand=' + expand
+    response = client.get(url, format='json')
 
-        self.assertEqual(response.data, {
-            'name' : 'Garfield',
-            'owner' : {
-                'name' : 'Fred',
-                'hobbies' : 'sailing',
-                'employer' : {
-                    'name' : 'McDonalds'
-                }
+    assert response.data[0] == {
+        'name': 'Garfield',
+        'toys': 'paper ball, string',
+        'species': 'cat',
+        'owner': {
+            'name': 'Fred',
+            'hobbies': 'sailing',
+            'employer': 1
+        }
+    }
+
+
+@pytest.mark.parametrize('expand', [
+    'owner.employer',
+    'owner.*',
+], ids=('field', 'wildcard'))
+def test_list_nested_expand(expand, client):
+    url = reverse('pet-list')
+    url = url + '?expand=' + expand
+    response = client.get(url, format='json')
+
+    assert response.data[0] == {
+        'name': 'Garfield',
+        'toys': 'paper ball, string',
+        'species': 'cat',
+        'owner': {
+            'name': 'Fred',
+            'hobbies': 'sailing',
+            'employer': {
+                'name': 'McDonalds',
+                'public': False
             }
-        })
-
-
-    def test_list_expanded(self):
-        url = reverse('pet-list')
-        url = url+'?expand=owner'
-        response = self.client.get(url, format='json')
-
-        self.assertEqual(response.data[0], {
-            'name' : 'Garfield',
-            'toys' : 'paper ball, string',
-            'species' : 'cat',
-            'owner' : {
-                'name' : 'Fred',
-                'hobbies' : 'sailing' 
-            }
-        })
-
-
-    def test_list_expanded_supports_wildcard(self):
-        url = reverse('pet-list')
-        url = url+'?expand=owner.employer'
-        response = self.client.get(url, format='json')
-
-        self.assertEqual(response.data[0], {
-            'name' : 'Garfield',
-            'toys' : 'paper ball, string',
-            'species' : 'cat',
-            'owner' : {
-                'name' : 'Fred',
-                'hobbies' : 'sailing',
-                'employer': {
-                    'name' : 'McDonalds',
-                    'public' : False
-                }
-            }
-        })
+        }
+    }

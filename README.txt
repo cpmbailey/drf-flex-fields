@@ -85,8 +85,6 @@ resource collections, your viewsets need to subclass
     class PersonViewSet(FlexFieldsModelViewSet):
       queryset = models.Person.objects.all()
       serializer_class = PersonSerializer
-      # Whitelist fields that can be expanded when listing resources
-      permit_list_expands = ['country']
 
     class CountrySerializer(FlexFieldsModelSerializer):
       class Meta:
@@ -97,10 +95,9 @@ resource collections, your viewsets need to subclass
       class Meta:
         model = Person
         fields = ('id', 'name', 'country', 'occupation')
-
-      expandable_fields: {
+        expandable_fields: {
           'country': (CountrySerializer, {source: 'country'})
-      }
+        }
 
 Now you can make requests like
 ``GET /person?expand=country&fields=id,name,country&omit=occupation`` to
@@ -119,7 +116,7 @@ Dynamic Field Expansion
 =======================
 
 To define an expandable field, add it to the ``expandable_fields``
-within your serializer:
+within your serializer meta:
 
 .. code:: python
 
@@ -135,10 +132,9 @@ within your serializer:
         class Meta:
             model = Person
             fields = ['id', 'name', 'country', 'occupation']
-
-        expandable_fields = {
-            'country': (CountrySerializer, {'source': 'country', 'fields': ['name']})
-        }
+            expandable_fields = {
+              'country': (CountrySerializer, {'source': 'country', 'fields': ['name']})
+            }
 
 If the default serialized response is the following:
 
@@ -175,7 +171,7 @@ Deferred Fields
 
 Alternatively, you could treat ``country`` as a "deferred" field by not
 defining it among the default fields. To make a field deferred, only
-define it within the serializer's ``expandable_fields``.
+define it within the serializer meta's ``expandable_fields``.
 
 Deep, Nested Expansion
 ----------------------
@@ -195,10 +191,9 @@ country serializer above:
         class Meta:
             model = Country
             fields = ['name', 'population']
-
-        expandable_fields = {
-            'states': (StateSerializer, {'source': 'states', 'many': True})
-        }
+            expandable_fields = {
+              'states': (StateSerializer, {'source': 'states', 'many': True})
+            }
 
     class PersonSerializer(FlexFieldsModelSerializer):
         country = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
@@ -206,10 +201,9 @@ country serializer above:
         class Meta:
             model = Person
             fields = ['id', 'name', 'country', 'occupation']
-
-        expandable_fields = {
-            'country': (CountrySerializer, {'source': 'country', 'fields': ['name']})
-        }
+            expandable_fields = {
+              'country': (CountrySerializer, {'source': 'country', 'fields': ['name']})
+            }
 
 Your default serialized response might be the following for ``person``
 and ``country``, respectively:
@@ -265,43 +259,15 @@ within the embedded country serializer) by explicitly passing the
 .. code:: python
 
     class PersonSerializer(FlexFieldsModelSerializer):
-
         class Meta:
             model = Person
             fields = ['id', 'name', 'country', 'occupation']
-
-        expandable_fields = {
-            'country': (CountrySerializer, {'source': 'country', 'expand': ['states']})
-        }
+            expandable_fields = {
+              'country': (CountrySerializer, {'source': 'country', 'expand': ['states']})
+            }
 
 Similarly if you wish to omit fields from the serializer's options, you can
 replace 'expand' with 'exclude'
-
-Field Expansion on "List" Views
--------------------------------
-
-By default, when subclassing ``FlexFieldsModelViewSet``, you can only
-expand fields when you are retrieving single resources, in order to
-protect yourself from careless clients. However, if you would like to
-make a field expandable even when listing collections, you can add the
-field's name to the ``permit_list_expands`` property on the viewset.
-Just make sure you are wisely using ``select_related`` and
-``prefect_related`` in the viewset's queryset by overriding expand_field.
-However be aware that the field could be in nested format, e.g. field.*
-
-Example:
-
-.. code:: python
-
-    class PersonViewSet(FlexFieldsModelViewSet):
-      permit_list_expands = ['employer']
-      queryset = models.Person.objects.all().select_related('employer')
-      serializer_class = PersonSerializer
-
-      def expand_field(self, field, queryset):
-          if field.startswith('employer'):
-              queryset = queryset.select_related('employer')
-          return queryset
 
 Use "*" to Expand All Available Fields
 -----------------------------------------

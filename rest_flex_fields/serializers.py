@@ -4,13 +4,12 @@ from rest_framework import serializers
 from rest_flex_fields import split_list, split_levels
 
 
-class FlexFieldsSerializerMixin(object):
+class FlexFieldsSerializerMixin:
     """
     A Serializer that takes additional arguments for "fields", "omit" and
     "expand" in order to control which fields are displayed, and whether to
     replace simple values with complex, nested serializations.
     """
-    expandable_fields = {}
     is_flex_field = True
 
     def __init__(self, *args, **kwargs):
@@ -38,7 +37,7 @@ class FlexFieldsSerializerMixin(object):
         expandable_fields_names = self._get_expandable_names(sparse_field_names, omit_field_names)
 
         if '*' in expand_field_names:
-            expand_field_names = self.expandable_fields.keys()
+            expand_field_names = self.expandable_fields().keys()
 
         for name in expand_field_names:
             if name not in expandable_fields_names:
@@ -49,13 +48,12 @@ class FlexFieldsSerializerMixin(object):
             self.fields[name] = self._make_expanded_field_serializer(
                 name, next_expand_field_names, next_sparse_field_names, next_omit_field_names
             )
-        
 
     def _make_expanded_field_serializer(self, name, nested_expands, nested_includes, nested_omits):
         """
         Returns an instance of the dynamically created nested serializer. 
         """
-        field_options = self.expandable_fields[name]
+        field_options = self.expandable_fields()[name]
         serializer_class = field_options[0]
         serializer_settings = copy.deepcopy(field_options[1])
         serializer_settings['parent'] = name
@@ -76,13 +74,12 @@ class FlexFieldsSerializerMixin(object):
         assert getattr(serializer_class, 'is_flex_field', False), '{} does not support being an expandable_field; try inheriting from FlexFieldsSerializerMixin'.format(serializer_class)
         return serializer_class(**serializer_settings)
 
-
     def _get_expandable_names(self, sparse_field_names, omit_field_names):
         field_names = set(self.fields.keys())
-        expandable_field_names = set(self.expandable_fields.keys())
+        expandable_field_names = set(self.expandable_fields().keys())
 
         if not sparse_field_names or '*' in sparse_field_names:
-            sparse_field_names = field_names | expandable_field_names
+            sparse_field_names = field_names
 
         allowed_field_names = set(sparse_field_names) - set(omit_field_names)
 
@@ -91,6 +88,9 @@ class FlexFieldsSerializerMixin(object):
 
         return list(expandable_field_names & allowed_field_names)
 
+    @classmethod
+    def expandable_fields(cls):
+        return getattr(getattr(cls, 'Meta', None), "expandable_fields", {})
 
     @property
     def _can_access_request(self):
@@ -108,7 +108,6 @@ class FlexFieldsSerializerMixin(object):
         
         return self.context['request'].method == 'GET'
 
-
     def _get_sparse_input(self, passed_settings, param):
         value = passed_settings.get(param)
 
@@ -121,38 +120,14 @@ class FlexFieldsSerializerMixin(object):
         fields = self.context['request'].query_params.get(param)
         return [f for f in split_list(fields) if f.startswith(passed_settings['parent'])] if fields else None
 
-
     def _get_omit_input(self, passed_settings):
         return self._get_sparse_input(passed_settings, 'omit')
-
 
     def _get_fields_input(self, passed_settings):
         return self._get_sparse_input(passed_settings, 'fields')
 
-
     def _get_expand_input(self, passed_settings):
-        """
-            If not expandable (ViewSet list method set this to false),
-            check to see if there are any fields that we are forcing 
-            to be expanded (from permit_list_expands).
-        """
-        value = passed_settings.get('expand')
-        
-        if value:
-            return value
-
-        if not self._can_access_request:
-            return None
-
-        if self.context.get('expandable') is False:
-            force_expand = self.context.get('force_expand', [])
-            if len(force_expand) > 0:
-                return force_expand
-
-            return None
-        
-        expand = self.context['request'].query_params.get('expand')
-        return [f for f in split_list(expand) if f.startswith(passed_settings['parent'])] if expand else None
+        return self._get_sparse_input(passed_settings, 'expand')
 
 
 def import_serializer_class(location):
