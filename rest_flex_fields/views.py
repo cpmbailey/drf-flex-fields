@@ -9,24 +9,24 @@ from .utils import split_list
 
 
 class FlexFieldsMixin:
-    def expand_field(self, field, queryset, serializer_class=None, query_parts=None):
+    def expand_field(self, field, queryset, serializer=None, query_parts=None):
         field_parts = field.split('.')
-        serializer_class = serializer_class or self.get_serializer_class()
+        serializer = serializer or self.get_serializer()
         query_parts = query_parts or []
         django_obj = queryset
 
         for idx, field in enumerate(field_parts):
             if field == '*':
-                for f in serializer_class.expandable_fields().keys():
-                    queryset = self.expand_field(f, queryset, serializer_class, query_parts)
+                for f in serializer.expandable_fields.keys():
+                    queryset = self.expand_field(f, queryset, serializer, query_parts)
 
-            if field not in serializer_class.expandable_fields():
+            if field not in serializer.expandable_fields:
                 break
 
-            source_field = serializer_class()[field].source
-            serializer_class, serializer_settings = serializer_class.expandable_fields()[field]
+            source_field = serializer[field].source
+            serializer_class, serializer_settings = serializer.expandable_fields[field]
             serializer_class = import_serializer_class(serializer_class)
-            serializer_class = import_serializer_class(serializer_settings.get('base_serializer_class', serializer_class))
+            serializer = import_serializer_class(serializer_settings.get('base_serializer_class', serializer_class))()
 
             try:
                 django_obj = django_obj.related_model._meta.get_field(source_field) if idx else django_obj.model._meta.get_field(source_field)

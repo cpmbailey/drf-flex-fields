@@ -37,7 +37,7 @@ class FlexFieldsSerializerMixin:
         expandable_fields_names = self._get_expandable_names(sparse_field_names, omit_field_names)
 
         if '*' in expand_field_names:
-            expand_field_names = self.expandable_fields().keys()
+            expand_field_names = self.expandable_fields.keys()
 
         for name in expand_field_names:
             if name not in expandable_fields_names:
@@ -53,7 +53,7 @@ class FlexFieldsSerializerMixin:
         """
         Returns an instance of the dynamically created nested serializer. 
         """
-        field_options = self.expandable_fields()[name]
+        field_options = self.expandable_fields[name]
         serializer_class = field_options[0]
         serializer_settings = copy.deepcopy(field_options[1])
         serializer_settings['parent'] = name
@@ -76,7 +76,7 @@ class FlexFieldsSerializerMixin:
 
     def _get_expandable_names(self, sparse_field_names, omit_field_names):
         field_names = set(self.fields.keys())
-        expandable_field_names = set(self.expandable_fields().keys())
+        expandable_field_names = set(self.expandable_fields.keys())
 
         if not sparse_field_names or '*' in sparse_field_names:
             sparse_field_names = field_names
@@ -88,9 +88,9 @@ class FlexFieldsSerializerMixin:
 
         return list(expandable_field_names & allowed_field_names)
 
-    @classmethod
-    def expandable_fields(cls):
-        return getattr(getattr(cls, 'Meta', None), "expandable_fields", {})
+    @property
+    def expandable_fields(self):
+        return getattr(getattr(self, 'Meta', None), "expandable_fields", {})
 
     @property
     def _can_access_request(self):
