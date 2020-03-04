@@ -9,16 +9,23 @@ from .utils import split_list
 
 
 class FlexFieldsMixin:
-    def expand_field(self, field, queryset, serializer=None, query_parts=None):
+    def expand_field(self, field, queryset, serializer=None, query_parts=None, sluggify_fields=False):
         field_parts = field.split('.')
         serializer = serializer or self.get_serializer()
+        simple_slugs = serializer.related_fields if sluggify_fields else []
+        many_slugs = serializer.many_related_fields if sluggify_fields else []
         query_parts = query_parts or []
         django_obj = queryset
+
+        for slug in simple_slugs:
+            queryset = queryset.select_related(slug)
+        for slug in many_slugs:
+            queryset = queryset.prefetch_related(slug)
 
         for idx, field in enumerate(field_parts):
             if field == '*':
                 for f in serializer.expandable_fields.keys():
-                    queryset = self.expand_field(f, queryset, serializer, query_parts)
+                    queryset = self.expand_field(f, queryset, serializer, query_parts, sluggify_fields)
 
             if field not in serializer.expandable_fields:
                 break
@@ -45,9 +52,10 @@ class FlexFieldsMixin:
     def get_queryset(self):
         queryset = super().get_queryset()
         expand = self.request.query_params.get('expand', '')
+        sluggify_fields = self.request.query_params.get('identifier') in ('name', 'reference')
 
         for field in split_list(expand):
-            queryset = self.expand_field(field, queryset)
+            queryset = self.expand_field(field, queryset, sluggify_fields=sluggify_fields)
 
         return queryset
 

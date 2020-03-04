@@ -297,10 +297,6 @@ However, you make the following request ```HTTP GET /person/13322?include=id,nam
 
 The ```include``` field takes precedence over ```expand```. That is, if a field is not among the set that is explicitly alllowed, it cannot be expanded. If such a conflict occurs, you will not pay for the extra database queries - the expanded field will be silently abandoned.
 
-# Serializer Introspection
-
-When using an instance of `FlexFieldsModelSerializer`, you can examine the property `expanded_fields` to discover which, if any, fields have been dynamically expanded. 
-
 # Changelog <a id="changelog"></a>
 
 ## 0.3.5 (September 2018)

@@ -1,6 +1,7 @@
 import importlib
 import copy
 from rest_framework import serializers
+from rest_framework.relations import SlugRelatedField
 from rest_flex_fields import split_list, split_levels
 
 
@@ -13,13 +14,12 @@ class FlexFieldsSerializerMixin:
     is_flex_field = True
 
     def __init__(self, *args, **kwargs):
-        self.expanded_fields = []
-
         passed = {
             'expand': kwargs.pop('expand', None),
             'fields': kwargs.pop('fields', None),
             'omit': kwargs.pop('omit', []),
-            'parent': kwargs.pop('parent', '')
+            'parent': kwargs.pop('parent', ''),
+            'identifier': kwargs.pop('identifier', None)
         }
 
         # add excludes from expandable_fields to those on query params
@@ -35,21 +35,44 @@ class FlexFieldsSerializerMixin:
         omit_field_names = set(omit_field_names) - next_omit_field_names.keys()
 
         expandable_fields_names = self._get_expandable_names(sparse_field_names, omit_field_names)
+        forced_expands = [name for name, field in self.fields.items() if isinstance(field, serializers.Serializer)]
+        identifier = passed['identifier']
+
+        if identifier or self._can_access_request:
+            url_specific_fields = ('view_name', 'lookup_field', 'lookup_url_kwarg', 'format')
+            identifier = identifier or self.context['request'].query_params.get('identifier') or self.context['request'].data.get('identifier')
+            if identifier in ('id', 'name', 'reference'):
+                for name in self.related_fields:
+                    kwargs = {k: v for k, v in self.fields[name]._kwargs.items() if k not in url_specific_fields}
+                    new_related_field = serializers.PrimaryKeyRelatedField(**kwargs) if identifier == 'id' else SafeSlugRelatedField(identifier, **kwargs)
+                    self.fields[name] = new_related_field
+                for name in self.many_related_fields:
+                    kwargs = {k: v for k, v in self.fields[name].child_relation._kwargs.items() if k not in url_specific_fields}
+                    new_related_field = serializers.PrimaryKeyRelatedField(**kwargs) if identifier == 'id' else SafeSlugRelatedField(identifier, **kwargs)
+                    self.fields[name].child_relation = new_related_field
+                self.fields.pop('url', None)
+                self.fields.pop('verbose_url', None)
 
         if '*' in expand_field_names:
             expand_field_names = self.expandable_fields.keys()
 
-        for name in expand_field_names:
+        for name in expand_field_names + forced_expands:
             if name not in expandable_fields_names:
                 continue
 
-            self.expanded_fields.append(name)
-
             self.fields[name] = self._make_expanded_field_serializer(
-                name, next_expand_field_names, next_sparse_field_names, next_omit_field_names
+                name, next_expand_field_names, next_sparse_field_names, next_omit_field_names, identifier
             )
 
-    def _make_expanded_field_serializer(self, name, nested_expands, nested_includes, nested_omits):
+    @property
+    def related_fields(self):
+        return [k for k, v in self.fields.items() if isinstance(v, serializers.HyperlinkedRelatedField) and not isinstance(v, serializers.HyperlinkedIdentityField)]
+
+    @property
+    def many_related_fields(self):
+        return [k for k, v in self.fields.items() if isinstance(v, serializers.ManyRelatedField) and isinstance(v.child_relation, serializers.HyperlinkedRelatedField)]
+
+    def _make_expanded_field_serializer(self, name, nested_expands, nested_includes, nested_omits, identifier):
         """
         Returns an instance of the dynamically created nested serializer. 
         """
@@ -70,6 +93,7 @@ class FlexFieldsSerializerMixin:
         if serializer_settings.get('source') == name:
             del serializer_settings['source']
 
+        serializer_settings['identifier'] = identifier
         serializer_class = import_serializer_class(serializer_class)
         assert getattr(serializer_class, 'is_flex_field', False), '{} does not support being an expandable_field; try inheriting from FlexFieldsSerializerMixin'.format(serializer_class)
         return serializer_class(**serializer_settings)
@@ -94,19 +118,7 @@ class FlexFieldsSerializerMixin:
 
     @property
     def _can_access_request(self):
-        """
-        Can access current request object if all are true
-        - The serializer is the root.
-        - A request context was passed in.
-        - The request method is GET.
-        """
-        if self.parent:
-            return False
-        
-        if not hasattr(self, 'context') or not self.context.get('request', None):
-            return False 
-        
-        return self.context['request'].method == 'GET'
+        return not self.parent and hasattr(self, 'context') and self.context.get('request', None)
 
     def _get_sparse_input(self, passed_settings, param):
         value = passed_settings.get(param)
