@@ -16,6 +16,7 @@ class FlexFieldsMixin:
         many_slugs = serializer.many_related_fields if sluggify_fields else []
         query_parts = query_parts or []
         django_obj = queryset
+        select_related_type = None
 
         for slug in simple_slugs:
             queryset = queryset.select_related(slug)
@@ -41,12 +42,14 @@ class FlexFieldsMixin:
                 break
             else:
                 query_parts.append(field)
+                if isinstance(django_obj, (ManyToOneRel, ManyToManyField)):
+                    select_related_type = 'prefetch_related'
+                elif isinstance(django_obj, (OneToOneRel, ForeignKey)) and not select_related_type:
+                    select_related_type = 'select_related'
 
         related_field = '__'.join(query_parts)
-        if isinstance(django_obj, (OneToOneRel, ForeignKey)):
-            queryset = queryset.select_related(related_field)
-        elif isinstance(django_obj, (ManyToOneRel, ManyToManyField)):
-            queryset = queryset.prefetch_related(related_field)
+        if select_related_type:
+            queryset = getattr(queryset, select_related_type)(related_field)
         return queryset
 
     def get_queryset(self):
