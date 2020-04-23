@@ -56,7 +56,7 @@ class FlexFieldsSerializerMixin:
         if '*' in expand_field_names:
             expand_field_names = self.expandable_fields.keys()
 
-        for name in expand_field_names + forced_expands:
+        for name in set(expand_field_names) | set(forced_expands):
             if name not in expandable_fields_names:
                 continue
 
