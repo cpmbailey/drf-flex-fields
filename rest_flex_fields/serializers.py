@@ -5,6 +5,14 @@ from rest_framework.relations import SlugRelatedField
 from rest_flex_fields import split_list, split_levels
 
 
+class SafeSlugRelatedField(SlugRelatedField):
+    def to_representation(self, obj):
+        try:
+            return super().to_representation(obj)
+        except AttributeError:
+            return 'Unknown identifier'
+
+
 class FlexFieldsSerializerMixin:
     """
     A Serializer that takes additional arguments for "fields", "omit" and
