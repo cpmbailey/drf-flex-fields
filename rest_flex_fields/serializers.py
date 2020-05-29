@@ -43,7 +43,7 @@ class FlexFieldsSerializerMixin:
         omit_field_names = set(omit_field_names) - next_omit_field_names.keys()
 
         expandable_fields_names = self._get_expandable_names(sparse_field_names, omit_field_names)
-        forced_expands = [name for name, field in self.fields.items() if isinstance(field, serializers.Serializer)]
+        forced_expand_names = [name for name, field in self.fields.items() if isinstance(field, serializers.Serializer)]
         identifier = passed['identifier']
 
         if identifier or self._can_access_request:
@@ -64,10 +64,9 @@ class FlexFieldsSerializerMixin:
         if '*' in expand_field_names:
             expand_field_names = self.expandable_fields.keys()
 
-        for name in set(expand_field_names) | set(forced_expands):
-            if name not in expandable_fields_names:
-                continue
+        resolved_expand_fields = set(expandable_fields_names) & (set(expand_field_names) | set(forced_expand_names))
 
+        for name in resolved_expand_fields:
             self.fields[name] = self._make_expanded_field_serializer(
                 name, next_expand_field_names, next_sparse_field_names, next_omit_field_names, identifier
             )
