@@ -1,11 +1,10 @@
 import importlib
 import copy
 from rest_framework import serializers
-from rest_framework.relations import SlugRelatedField
 from rest_flex_fields import split_list, split_levels
 
 
-class SafeSlugRelatedField(SlugRelatedField):
+class SafeSlugRelatedField(serializers.SlugRelatedField):
     def to_representation(self, obj):
         try:
             return super().to_representation(obj)
@@ -73,11 +72,11 @@ class FlexFieldsSerializerMixin:
 
     @property
     def related_fields(self):
-        return [k for k, v in self.fields.items() if isinstance(v, serializers.HyperlinkedRelatedField) and not isinstance(v, serializers.HyperlinkedIdentityField)]
+        return [k for k, v in self.fields.items() if isinstance(v, serializers.RelatedField) and not isinstance(v, serializers.HyperlinkedIdentityField)]
 
     @property
     def many_related_fields(self):
-        return [k for k, v in self.fields.items() if isinstance(v, serializers.ManyRelatedField) and isinstance(v.child_relation, serializers.HyperlinkedRelatedField)]
+        return [k for k, v in self.fields.items() if isinstance(v, serializers.ManyRelatedField) and isinstance(v.child_relation, serializers.RelatedField)]
 
     def _make_expanded_field_serializer(self, name, nested_expands, nested_includes, nested_omits, identifier):
         """
