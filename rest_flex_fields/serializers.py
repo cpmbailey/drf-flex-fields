@@ -12,6 +12,24 @@ class SafeSlugRelatedField(serializers.SlugRelatedField):
             return 'Unknown identifier'
 
 
+class HyperlinkedRelatedField(serializers.HyperlinkedRelatedField):
+    """
+    Also supports creating url directly from pk
+    """
+    def get_url(self, obj, view_name, request, format):
+        lookup_value = obj if isinstance(obj, int) else getattr(obj, self.lookup_field)
+        kwargs = {self.lookup_url_kwarg: lookup_value}
+        return self.reverse(view_name, kwargs=kwargs, request=request, format=format)
+
+
+class PrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
+    """
+    Also supports value is already pk
+    """
+    def to_representation(self, value):
+        return value if isinstance(value, int) else super().to_representation(value)
+
+
 class FlexFieldsSerializerMixin:
     """
     A Serializer that takes additional arguments for "fields", "omit" and
@@ -51,11 +69,11 @@ class FlexFieldsSerializerMixin:
             if identifier in ('id', 'name', 'reference'):
                 for name in self.related_fields:
                     kwargs = {k: v for k, v in self.fields[name]._kwargs.items() if k not in url_specific_fields}
-                    new_related_field = serializers.PrimaryKeyRelatedField(**kwargs) if identifier == 'id' else SafeSlugRelatedField(identifier, **kwargs)
+                    new_related_field = PrimaryKeyRelatedField(**kwargs) if identifier == 'id' else SafeSlugRelatedField(identifier, **kwargs)
                     self.fields[name] = new_related_field
                 for name in self.many_related_fields:
                     kwargs = {k: v for k, v in self.fields[name].child_relation._kwargs.items() if k not in url_specific_fields}
-                    new_related_field = serializers.PrimaryKeyRelatedField(**kwargs) if identifier == 'id' else SafeSlugRelatedField(identifier, **kwargs)
+                    new_related_field = PrimaryKeyRelatedField(**kwargs) if identifier == 'id' else SafeSlugRelatedField(identifier, **kwargs)
                     self.fields[name].child_relation = new_related_field
                 self.fields.pop('url', None)
                 self.fields.pop('verbose_url', None)
