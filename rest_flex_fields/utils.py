@@ -26,7 +26,7 @@ def split_levels(fields):
     return first_level_fields, next_level_fields
 
 
-def get_list_query_param(query_params, param):
+def get_list_query_param(query_params, param, default=None):
     """
     >>> get_list_query_param({'foo': 'a,b,c'}, 'foo')
     ['a', 'b', 'c']
@@ -36,8 +36,11 @@ def get_list_query_param(query_params, param):
     []
     >>> get_list_query_param({}, 'foo')
     []
+    >>> get_list_query_param({}, 'foo', ['bar'])
+    ['bar']
     """
-    return split_list(query_params.get(param, ''))
+    default = ','.join(default or [])
+    return split_list(query_params.get(param, default))
 
 
 def get_requested_fields(all_fields, query_params):
