@@ -90,16 +90,18 @@ class FlexFieldsSerializerMixin:
 
     @property
     def related_fields(self):
+        NoneType = type(None)
         related_fields = [k for k, v in self.fields.items() if isinstance(v, serializers.RelatedField) and not isinstance(v, serializers.HyperlinkedIdentityField)]
         if hasattr(self, 'Meta') and hasattr(self.Meta, 'model'):
-            related_fields = [k for k in related_fields if not isinstance(getattr(self.Meta.model, k, None), property)]
+            related_fields = [k for k in related_fields if not isinstance(getattr(self.Meta.model, k, None), (property, NoneType))]
         return related_fields
 
     @property
     def many_related_fields(self):
+        NoneType = type(None)
         many_related_fields = [k for k, v in self.fields.items() if isinstance(v, serializers.ManyRelatedField) and isinstance(v.child_relation, serializers.RelatedField)]
         if hasattr(self, 'Meta') and hasattr(self.Meta, 'model'):
-            many_related_fields = [k for k in many_related_fields if not isinstance(getattr(self.Meta.model, k, None), property)]
+            many_related_fields = [k for k in many_related_fields if not isinstance(getattr(self.Meta.model, k, None), (property, NoneType))]
         return many_related_fields
 
     def _make_expanded_field_serializer(self, name, nested_expands, nested_includes, nested_omits, identifier):
