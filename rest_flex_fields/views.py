@@ -18,10 +18,8 @@ class FlexFieldsMixin:
         django_obj = queryset
         select_related_type = None
 
-        for slug in simple_slugs:
-            queryset = queryset.select_related(slug)
-        for slug in many_slugs:
-            queryset = queryset.prefetch_related(slug)
+        queryset = queryset.select_related(*simple_slugs)
+        queryset = queryset.prefetch_related(*many_slugs)
 
         for idx, field in enumerate(field_parts):
             if field == '*':
