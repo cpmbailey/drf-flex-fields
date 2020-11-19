@@ -9,7 +9,7 @@ class SafeSlugRelatedField(serializers.SlugRelatedField):
         try:
             return super().to_representation(obj)
         except AttributeError:
-            return 'Unknown identifier'
+            return 'Unknown'
 
 
 class HyperlinkedRelatedField(serializers.HyperlinkedRelatedField):
